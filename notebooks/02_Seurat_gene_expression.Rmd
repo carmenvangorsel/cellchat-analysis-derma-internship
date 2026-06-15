@@ -1,0 +1,161 @@
+---
+title: "LRpairs_cellchat"
+author: "Carmen van Gorsel"
+date: "2026-04-08"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = T, message = F, warning = F, results = 'hide', fig.width = 15, fig.height = 15, out.width = "100%")
+```
+
+# Analysing gene expression of cellchat LR-pairs
+
+## Loading Seurat object
+
+```{r}
+library(Seurat)
+library(patchwork)
+library(dplyr)
+library(ggplot2)
+library(writexl)
+ADobject <- readRDS("C:/bachelor_stage/R projects/AD_Seurat/subset_Carmen.rds")
+
+ncol(ADobject) # 216,727 cells!
+length(unique(ADobject$subject_id)) # 14 people
+table(ADobject$disease_status) # table with how many healthy vs how many AD cells
+table(ADobject$subject_id) # 5000 - 30000 cells per person
+
+# visualizing clustering with umap
+DimPlot(ADobject, reduction = 'umap', group.by = "reannotation", shape.by = NULL, raster = F)
+```
+
+```{r}
+
+"PPIA" %in% rownames(ADobject)
+"BSG" %in% rownames(ADobject)
+"PTN" %in% rownames(ADobject)
+"NCL" %in% rownames(ADobject)
+"MIF" %in% rownames(ADobject)
+"ACKR3" %in% rownames(ADobject)
+"IGFBP3" %in% rownames(ADobject)
+"TMEM219" %in% rownames(ADobject)
+"PRSS3" %in% rownames(ADobject)
+"F2R" %in% rownames(ADobject)
+# All the cellchat genes are in here, just to check the names
+"ACE2" %in% rownames(ADobject) # also important cypA receptor
+ADkeras <- subset(ADobject, subset = reannotation == "Keratinocytes")
+ADfibroblasts <- subset(ADobject, subset = reannotation == "Fibroblasts")
+
+
+PPIA_BSG_fibs <- VlnPlot(ADfibroblasts, features = c("PPIA", "BSG"), group.by = "disease_lesional", slot = 'data', log = TRUE, pt.size = 0, combine = T) 
+PPIA_BSG_kc <- VlnPlot(ADkeras, features = c("PPIA", "BSG"), group.by = "disease_lesional", slot = 'data', log = TRUE, pt.size = 0, combine = T)
+
+
+PTN_NCL_fibs <- VlnPlot(ADfibroblasts, features = c("PTN", "NCL"), group.by = "disease_lesional", slot = 'data', log = TRUE, pt.size = 0, combine = T)
+PTN_NCL_kc <- VlnPlot(ADkeras, features = c("PTN", "NCL"), group.by = "disease_lesional", slot = 'data', log = TRUE, pt.size = 0, combine = T)
+
+MIF_ACKR3_fibs <- VlnPlot(ADfibroblasts, features = c("MIF", "ACKR3"), group.by = "disease_lesional", slot = 'data', log = TRUE, pt.size = 0, combine = T)
+MIF_ACKR3_kc <- VlnPlot(ADkeras, features = c("MIF", "ACKR3"), group.by = "disease_lesional", slot = 'data', log = TRUE, pt.size = 0, combine = T)
+
+IGFBP3_TMEM219_fibs <- VlnPlot(ADfibroblasts, features = c("IGFBP3", "TMEM219"), group.by = "disease_lesional", slot = 'data', log = TRUE, pt.size = 0, combine = T)
+IGFBP3_TMEM219_kc <-  VlnPlot(ADkeras, features = c("IGFBP3", "TMEM219"), group.by = "disease_lesional", slot = 'data', log = TRUE, pt.size = 0, combine = T)
+
+PRSS3_F2R_fibs <- VlnPlot(ADfibroblasts, features = c("PRSS3", "F2R"), group.by = "disease_lesional", slot = 'data', log = TRUE, pt.size = 0, combine = T) 
+PRSS3_F2R_kc <- VlnPlot(ADkeras, features = c("PRSS3", "F2R"), group.by = "disease_lesional", slot = 'data', log = TRUE, pt.size = 0, combine = T)
+
+ACE2_fibs <- VlnPlot(ADfibroblasts, features = "ACE2", group.by = "disease_lesional", slot = 'data', log = TRUE, pt.size = 0, combine = T) + ggtitle("Fibroblasts")
+ACD2_kc <- VlnPlot(ADkeras, features = "ACE2", group.by = "disease_lesional", slot = 'data', log = TRUE, pt.size = 0, combine = T) + ggtitle("Keratinocytes")
+
+ACE2_violin <- ACE2_fibs + ACD2_kc
+ggsave("ACE2_violin.png", ACE2_violin, width = 15, height = 15, dpi = 300)
+ACE2_violin
+
+
+row1 <- PPIA_BSG_fibs +
+  plot_annotation(
+    title = "Fibroblasts",
+    theme = theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+  )
+row2 <- PPIA_BSG_kc +
+  plot_annotation(
+    title = "Keratinocytes",
+    theme = theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+  )
+row3 <- PTN_NCL_fibs +
+  plot_annotation(
+    title = "Fibroblasts",
+    theme = theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+  )
+row4 <- PTN_NCL_kc +
+  plot_annotation(
+    title = "Keratinocytes",
+    theme = theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+  )
+row5 <- MIF_ACKR3_fibs +
+  plot_annotation(
+    title = "Fibroblasts",
+    theme = theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+  )
+row6 <- MIF_ACKR3_kc +
+  plot_annotation(
+    title = "Keratinocytes",
+    theme = theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+  )
+row7 <- IGFBP3_TMEM219_fibs +
+  plot_annotation(
+    title = "Fibroblasts",
+    theme = theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+  )
+row8 <- IGFBP3_TMEM219_kc +
+  plot_annotation(
+    title = "Keratinocytes",
+    theme = theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+  )
+
+row9 <- PRSS3_F2R_fibs +
+  plot_annotation(
+    title = "Fibroblasts",
+    theme = theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+  )
+row10 <- PRSS3_F2R_kc +
+  plot_annotation(
+    title = "Keratinocytes",
+    theme = theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+  )
+
+vlnplots <- (row1|row2)/(row3|row4)/(row5|row6)/(row7|row8)/(row9|row10)
+vlnplots
+ggsave("vlnplots.png", vlnplots, width = 15, height = 15, dpi = 300)
+
+# export normalized gene expression data per cell type for the cellchat genes
+
+ADobject$celltype_condition <- paste0(ADobject@meta.data$reannotation, "_", ADobject@meta.data$disease_lesional)
+
+avexp <- AggregateExpression(ADobject, features = c("PPIA", "BSG", "PTN", "NCL", "MIF", "ACKR3", "IGFBP3", "TMEM219", "PRSS3", "F2R", "ACE2"), group.by = "celltype_condition", assays = "RNA", slot = "data")$RNA
+avexp_df <- as.data.frame(as.matrix(avexp))
+
+write.csv(avexp_df, "avg_expression_celltype_condition.csv")
+avexp_df$gene <- rownames(avexp_df)
+avexp_df <- avexp_df[, c("gene", setdiff(colnames(avexp_df), "gene"))]
+write_xlsx(avexp_df, "avg_expression_celltype_condition.xlsx")
+
+# do DE analysis
+Idents(ADkeras) <- "disease_lesional"
+Idents(ADfibroblasts) <-  "disease_lesional"
+lr_fib_FC <- FindMarkers(ADfibroblasts, 
+            ident.1 = "Lesional", 
+            ident.2= "Non-lesional", 
+            features = c("PPIA", "PTN", "ACKR3", "TMEM219", "F2R") )
+lr_kc_FC <- FindMarkers(ADkeras, 
+            ident.1 = "Lesional", 
+            ident.2= "Non-lesional", 
+            features = c("BSG", "NCL", "MIF", "IGFBP3", "PRSS3") )
+
+write_xlsx(lr_fib_FC, "DEfibgenes.xlsx")
+write_xlsx(lr_kc_FC, "DEkcgenes.xlsx")
+```
+
+On gene expression level, the values are a bit different than the communication probabilities from Cellchat. Indeed, there is not much difference in gene expression in PPIA and BSG in lesional vs non-lesional, it is more about to which cells it is signalled and the excretion. However, it is still odd, since cellchat can only base its communications on gene expression data. PTN is really supposed to less expressed in lesional, since the violin plots show this. this does not correspond very well with the qPCRs. interestingly, sometimes like with ACKR3, the average gene expression for fibroblasts is lower for healthy fibs, but similar for lesional and non-lesional. But it is also just a receptor, not the ligand.
+
+## 

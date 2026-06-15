@@ -1,0 +1,571 @@
+---
+title: "FB and KC crosstalk in AD CellChat object"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = T, message = F, warning = F, results = 'hide', fig.width = 12, fig.height = 6, out.width = "100%")
+```
+
+# Analysis of lesional vs non-lesional communication between fibroblast and keratinocyte in AD
+
+# Main analysis
+
+## Loading packages and dataset
+
+```{r}
+library(Seurat)
+library(dplyr)
+library(patchwork)
+library(CellChat)
+library(ggplot2)
+library(ggtext)
+
+# loading merged cellchat object
+cellchat_LN <- readRDS("subset_Carmen_cc_Les_NL.rds")
+cellchat_LS <- readRDS("subset_Carmen_cc_les.rds")
+cellchat_NL <- readRDS("subset_Carmen_cc_NL.rds")
+
+# total communication in lesional and non-lesional skin
+weight_LS <- data.frame(
+  direction = c("KC-Fib", "Fib-KC"),
+  weight = c(
+    cellchat_LN@net$Lesional$weight["Keratinocytes", "Fibroblasts"],
+    cellchat_LN@net$Lesional$weight["Fibroblasts", "Keratinocytes"]
+  )
+)
+# 
+# direction     weight
+#  KC-Fib   0.05911971
+#  Fib-KC   1.96669495
+weight_NL <- data.frame(
+  direction = c("KC-Fib", "Fib-KC"),
+  weight = c(
+    cellchat_LN@net$`Non-lesional`$weight["Keratinocytes", "Fibroblasts"],
+    cellchat_LN@net$`Non-lesional`$weight["Fibroblasts", "Keratinocytes"]
+  )
+)
+# direction     weight
+# KC-Fib    0.04575346
+# Fib-KC    1.25374158
+
+```
+
+## Pathway contributions to communication: lesional vs non-lesional
+
+```{r}
+# rankNet on weights slot of netP fibroblast to keratinocyte
+difpaths_fk <- rankNet(
+  cellchat_LN,
+  slot.name = "netP",
+  mode = "comparison",
+  sources.use = 1,
+  targets.use = 2,
+  do.stat = TRUE,
+  return.data = TRUE,
+  title = "fibroblast to keratinocyte"
+)
+
+# keratinocyte to fibroblast
+difpaths_kf <- rankNet(
+  cellchat_LN,
+  slot.name = "netP",
+  mode = "comparison",
+  sources.use = 2,
+  targets.use = 1,
+  do.stat = TRUE,
+  return.data = TRUE, 
+  title = "Keratinocyte to fibroblast"
+)
+
+# extract ggobject and plot together
+rn_netp_fk <- difpaths_fk$gg.obj
+rn_netp_kf <- difpaths_kf$gg.obj
+rn_netp_fk + rn_netp_kf
+```
+
+CypA, PTN, IGFBP, MIF, PARs and NOTCH are interesting for further investigation.
+
+## LR-pair contributions to communication
+
+```{r}
+# fibroblast to keratinocyte rankNet on weight slot in net
+difgenes_fk <- rankNet(
+  cellchat_LN,
+  slot.name = "net",
+  mode = "comparison",
+  sources.use = 1,
+  targets.use = 2,
+  do.stat = TRUE,
+  return.data = TRUE,
+  title = "fibroblast to keratinocyte"
+)
+
+# keratinocyte to fibroblast
+difgenes_kf <- rankNet(
+  cellchat_LN,
+  slot.name = "net",
+  mode = "comparison",
+  sources.use = 2,
+  targets.use = 1,
+  do.stat = TRUE,
+  return.data = TRUE,
+  title = "keratinocyte to fibroblast"
+)
+
+# extract ggobjects and plot 
+rn_net_fk <- difgenes_fk$gg.obj
+rn_net_kf <- difgenes_kf$gg.obj
+rn_net_fk + rn_net_kf
+
+```
+
+For now, only the LR-pairs belonging to previously found pathways was selected. A customized rankNet-like ggplot was used for visualization.
+
+```{r}
+# extract dataframe from ranknet analyses
+rn_net_fk_df <- difgenes_fk$signaling.contribution
+rn_net_kf_df <- difgenes_kf$signaling.contribution
+
+# filter all interactions from our database belonging to previously found pathways
+CellChatDB <- cellchat_LN@DB
+interaction_input <- CellChatDB$interaction
+ranknetpathways <- c("CypA", "PTN", "IGFBP", "MIF", "NOTCH", "PARs")
+lr_subset <- interaction_input[
+  interaction_input$pathway_name %in% ranknetpathways,
+]
+# filter only relevant LRpairs in dataframes
+rn_net_fk_df_filtered <- rn_net_fk_df[
+  rn_net_fk_df$name %in% lr_subset$
+    interaction_name,
+]
+
+rn_net_kf_df_filtered <- rn_net_kf_df[
+  rn_net_kf_df$name %in% lr_subset$
+    interaction_name,
+]
+
+# give lesional and non-lesional LRpairs in dataframe a color with markdown language
+rn_net_fk_df_filtered$name_colored <- ifelse(
+  rn_net_fk_df_filtered$group == "Lesional",
+  paste0("<span style='color:#f8766d;'>", rn_net_fk_df_filtered$name, "</span>"),
+  paste0("<span style='color:#00bfc4;'>", rn_net_fk_df_filtered$name, "</span>")
+)
+
+rn_net_kf_df_filtered$name_colored <- ifelse(
+  rn_net_kf_df_filtered$group == "Lesional",
+  paste0("<span style='color:#f8766d;'>", rn_net_kf_df_filtered$name, "</span>"),
+  paste0("<span style='color:#00bfc4;'>", rn_net_kf_df_filtered$name, "</span>")
+)
+
+# group with hightest contribution (largest bar) gets color on the label
+label_fk_df <- rn_net_fk_df_filtered %>%
+  group_by(name) %>%
+  slice_max(contribution.scaled, n = 1, with_ties = FALSE) %>%
+  ungroup()
+
+label_kf_df <- rn_net_kf_df_filtered %>%
+  group_by(name) %>%
+  slice_max(contribution.scaled, n = 1, with_ties = FALSE) %>%
+  ungroup()
+
+label_fk_df <- label_fk_df %>%
+  mutate(name_colored = ifelse(
+    group == "Lesional",
+    paste0("<span style='color:#f8766d;'>", name, "</span>"),
+    paste0("<span style='color:#00bfc4;'>", name, "</span>")
+  ))
+
+label_kf_df <- label_kf_df %>%
+  mutate(name_colored = ifelse(
+    group == "Lesional",
+    paste0("<span style='color:#f8766d;'>", name, "</span>"),
+    paste0("<span style='color:#00bfc4;'>", name, "</span>")
+  ))
+
+label_vec_fk <- setNames(label_fk_df$name_colored, label_fk_df$name)
+label_vec_kf <- setNames(label_kf_df$name_colored, label_kf_df$name)
+
+    
+# ggplot visualization
+    
+cust_rn_net_fk <- ggplot(rn_net_fk_df_filtered,
+             aes(x = reorder(name, contribution.scaled),
+                 y = contribution.scaled,
+                 fill = group)) +
+  geom_col(width = 0.4, alpha = 0.85, position = position_dodge(width = 0.45)) +
+  coord_flip() +
+  
+  scale_x_discrete(labels = label_vec_fk) +
+  
+  labs(
+    x = "",
+    y = "Information flow",
+    fill = "",
+    title = "Fibroblast to keratinocyte"
+  ) +
+  
+  scale_fill_manual(values = c(
+  "Lesional" = "#f8766d",   
+  "Non-lesional" = "#00bfc4"
+),
+guide = guide_legend(reverse = TRUE)
+) +
+  
+ 
+  
+  theme_classic(base_size = 11) +
+  theme(
+    axis.text.y = element_markdown(size = 8),
+    axis.text.x = element_text(size = 8),
+    panel.grid = element_blank(),
+    legend.position = "right",
+    legend.text = element_text(size = 8),
+    plot.title = element_text(size = 12, hjust = 0.5)
+  )
+
+cust_rn_net_kf <- ggplot(rn_net_kf_df_filtered,
+             aes(x = reorder(name, contribution.scaled),
+                 y = contribution.scaled,
+                 fill = group)) +
+  geom_col(width = 0.4, alpha = 0.85, position = position_dodge(width = 0.45)) +
+  coord_flip() +
+  
+  scale_x_discrete(labels = label_vec_kf) +
+  
+  labs(
+    x = "",
+    y = "Information flow",
+    fill = "",
+    title = "Keratinocyte to fibroblast"
+  ) +
+  
+  scale_fill_manual(values = c(
+  "Lesional" = "#f8766d",   
+  "Non-lesional" = "#00bfc4"
+),
+guide = guide_legend(reverse = TRUE)
+) +
+  
+ 
+  
+  theme_classic(base_size = 11) +
+  theme(
+    axis.text.y = element_markdown(size = 8),
+    axis.text.x = element_text(size = 8),
+    panel.grid = element_blank(),
+    legend.position = "right",
+    legend.text = element_text(size = 8),
+    plot.title = element_text(size = 12, hjust = 0.5)
+  )
+
+cust_rn_net_fk+cust_rn_net_kf
+
+# pathways and LR-pair ranknets together
+(rn_netp_fk | rn_netp_kf)/(cust_rn_net_fk | cust_rn_net_kf)
+```
+
+## Absolute communication probability
+
+Since rankNet provides relative contributions, a similar analysis was performed to assess communication probability for all relevant LR-pairs directly from the "net" slot. Note that there is no normalisation to the total communication of the condition, so comparison is limited. However, the raw output could give an indication how strong communication is.
+
+```{r}
+# extract communication probabilities from net
+prob_les <- cellchat_LN@net$Lesional$prob
+prob_non <- cellchat_LN@net$`Non-lesional`$prob
+
+# make a function to make a dataframe for lesional and non-lesional with all interactions probabilities
+extract_lr_df <- function(prob_array, condition_name){
+
+  lr_names <- dimnames(prob_array)[[3]]
+  cell_from <- dimnames(prob_array)[[1]]
+  cell_to <- dimnames(prob_array)[[2]]
+
+  df <- expand.grid(
+    from = cell_from,
+    to = cell_to,
+    lr_pair = lr_names
+  )
+
+  df$prob <- as.vector(prob_array)
+  df$condition <- condition_name
+
+  return(df)
+}
+
+df_les <- extract_lr_df(cellchat_LN@net$Lesional$prob, "Lesional")
+df_non <- extract_lr_df(cellchat_LN@net$`Non-lesional`$prob, "Non-lesional")
+
+# fuse dataframes
+df_all <- rbind(df_les, df_non)
+
+# only signaling between fibroblasts and keratinocytes
+df_fk <- subset(df_all,
+                from == "Fibroblasts" &
+                to == "Keratinocytes")
+
+df_kf <- subset(df_all,
+                from == "Keratinocytes" &
+                  to == "Fibroblasts")
+
+# select LR-pairs belonging to our relevant pathways
+df_fk_int  <- df_fk[
+  df_fk$lr_pair %in% lr_subset$
+    interaction_name,
+]
+
+# select LR-pairs with probability above 0
+df_fk_int <- df_fk_int[
+  df_fk_int$prob > 0, 
+]
+
+df_kf_int <- df_kf[
+  df_kf$lr_pair %in% lr_subset$
+    interaction_name,
+]
+df_kf_int <- df_kf_int[
+  df_kf_int$prob > 0, 
+]
+
+# give lesional and non-lesional LRpairs in dataframe a color with markdown language
+df_fk_int$lrpair_colored <- ifelse(
+  df_fk_int$condition == "Lesional",
+  paste0("<span style='color:#f8766d;'>", df_fk_int$lr_pair, "</span>"),
+  paste0("<span style='color:#00bfc4;'>", df_fk_int$condition, "</span>")
+)
+
+df_kf_int$lrpair_colored <- ifelse(
+  df_kf_int$condition == "Lesional",
+  paste0("<span style='color:#f8766d;'>", df_kf_int$condition, "</span>"),
+  paste0("<span style='color:#00bfc4;'>", df_kf_int$condition, "</span>")
+)
+
+# group with hightest contribution (largest bar) gets color on the label
+label_df_fk_int <- df_fk_int %>%
+  group_by(lr_pair) %>%
+  slice_max(prob, n = 1, with_ties = FALSE) %>%
+  ungroup()
+
+label_df_kf_int <- df_kf_int %>%
+  group_by(lr_pair) %>%
+  slice_max(prob, n = 1, with_ties = FALSE) %>%
+  ungroup()
+
+label_df_fk_int <- label_df_fk_int %>%
+  mutate(lrpair_colored = ifelse(
+    condition == "Lesional",
+    paste0("<span style='color:#f8766d;'>", lr_pair, "</span>"),
+    paste0("<span style='color:#00bfc4;'>", lr_pair, "</span>")
+  ))
+
+label_df_kf_int <- label_df_kf_int %>%
+  mutate(lrpair_colored = ifelse(
+    condition == "Lesional",
+    paste0("<span style='color:#f8766d;'>", lr_pair, "</span>"),
+    paste0("<span style='color:#00bfc4;'>", lr_pair, "</span>")
+  ))
+
+label_vec_fk_int <- setNames(label_df_fk_int$lrpair_colored, label_df_fk_int$lr_pair)
+label_vec_kf_int <- setNames(label_df_kf_int$lrpair_colored, label_df_kf_int$lr_pair)
+
+
+
+# earlier format to plot
+comprob_fk <- ggplot(df_fk_int,
+             aes(x = reorder(lr_pair, prob),
+                 y = prob,
+                 fill = condition)) +
+  geom_col(width = 0.4, alpha = 0.85, position = position_dodge(width = 0.45)) +
+  coord_flip() +
+  
+  scale_x_discrete(labels = label_vec_fk_int) +
+  
+  labs(
+    x = "",
+    y = "Absolute communication probability",
+    fill = "",
+    title = "Fibroblast to keratinocyte"
+  ) +
+  
+  scale_fill_manual(values = c(
+  "Lesional" = "#f8766d",   
+  "Non-lesional" = "#00bfc4"
+)) +
+  
+  
+  
+  theme_classic(base_size = 12) +
+  theme(
+    axis.text.y = element_markdown(size = 10),
+    axis.text.x = element_text(size = 10),
+    panel.grid = element_blank(),
+    legend.position = "right",
+    legend.text = element_text(size = 10, hjust = 0.5),
+    base_family = "Arial",
+    plot.title = element_text(size = 15, hjust = 0.5)
+  )
+
+comprob_kf <- ggplot(df_kf_int,
+             aes(x = reorder(lr_pair, prob),
+                 y = prob,
+                 fill = condition)) +
+  geom_col(width = 0.4, alpha = 0.85, position = position_dodge(width = 0.45)) +
+  coord_flip() +
+  
+  scale_x_discrete(labels = label_vec_kf_int) +
+  
+  labs(
+    x = "",
+    y = "Absolute communication probability",
+    fill = "",
+    title = "Keratinocyte to fibroblast"
+  ) +
+  
+  scale_fill_manual(values = c(
+  "Lesional" = "#f8766d",   
+  "Non-lesional" = "#00bfc4"
+))+
+  
+  
+  
+  theme_classic(base_size = 12) +
+  theme(
+    axis.text.y = element_markdown(size = 10),
+    axis.text.x = element_text(size = 10),
+    panel.grid = element_blank(),
+    legend.position = "right",
+    legend.text = element_text(size = 10, hjust = 0.5),
+    base_family = "Arial",
+    plot.title = element_text(size = 15, hjust = 0.5)
+  )
+
+comprob_fk+comprob_kf
+```
+
+## Visualizing communication network per pathway
+
+To view the rationale for continuing with the following pathways, see section: [Pathways](#pathways)
+
+Circle plots were made for every selected pathway using the netVisual_aggregrate function. Since this function does not generate ggplots, a PNG is immediately generated here.
+
+```{r}
+png("circleplots.png", width = 3100, height = 4500, res = 300)
+par(mfrow = c(3,2), mar = c(1,1,2,1), xpd=TRUE) 
+circleCypA_LS <- netVisual_aggregate(
+  cellchat_LS, 
+  signaling = "CypA", 
+  layout = "circle",
+  vertex.label.cex = 1.7,
+  show.legend = F,
+  vertex.size = 6
+)
+
+
+
+circleCypA_NL <- netVisual_aggregate(
+  cellchat_NL, 
+  signaling = "CypA", 
+  layout = "circle",
+  vertex.label.cex = 1.7,
+  show.legend = F,
+  vertex.size = 6
+)
+
+
+
+circleMIF_LS <- netVisual_aggregate(
+  cellchat_LS, 
+  signaling = "MIF", 
+  layout = "circle",
+  vertex.label.cex = 1.7,
+  show.legend = F,
+  vertex.size = 6
+)
+
+
+
+circleMIF_NL <- netVisual_aggregate(
+  cellchat_NL, 
+  signaling = "MIF", 
+  layout = "circle",
+  vertex.label.cex = 1.7,
+  show.legend = F,
+  vertex.size = 6
+)
+
+
+
+circlePTN <- netVisual_aggregate(
+  cellchat_NL,
+  signaling = "PTN",
+  layout = "circle",
+  vertex.label.cex = 1.7,
+  show.legend = F,
+  vertex.size = 6
+)
+
+
+
+circleIGFBP <- netVisual_aggregate(
+  cellchat_LS,
+  signaling = "IGFBP",
+  layout = "circle",
+  vertex.label.cex = 1.7,
+  show.legend = F,
+  vertex.size = 6
+  
+)
+
+
+
+dev.off()
+
+
+
+png("circlepars_LS.png", width = 3000, height = 3000, res = 300)
+
+
+circlePARs <- netVisual_aggregate(
+  cellchat_LS,
+  signaling = "PARs",
+  layout = "circle",
+  vertex.label.cex = 1.7,
+  show.legend = F,
+  vertex.size = 6
+  
+)
+dev.off()
+
+
+```
+
+```{r}
+knitr::include_graphics("circleplots.png")
+knitr::include_graphics("circlepars_LS.png")
+```
+
+# Pathways {#pathways}
+
+## CypA
+
+Cyclophilin A (CypA) is a proinflammatory protein which gets released extracellularly under stress, including infections and hypoxic conditions. Currently, CD147 is its only receptor that has been identified. Upon binding, inflammatory pathways including JNK, ERK and PI3K are activated. eCypA has found to be elevated in the serum and skin of psoriasis patients. Stimulation of a keratinocyte cell line with eCypA resulted in an upregulation of antimicrobial peptides and inflammatory proteins, including S100A7 and CXCL8. Transcriptomics analysis of eCypA-treated keratinocytes, showed that eCypA activates the JAK1/STAT3 pathway by binding the ACE2 receptor, and activates PI3K/AKT pathways by binding CD147. This CypA – CD147 interaction, showed to induce keratinocyte proliferation.  Cyclophilin A is a housekeeping gene, but is released extracellularly when cellular stress occurs. eCypA binds its receptor ACE2 to activate JAK/STAT3 signaling to induce cytokine expression, including: IL-6, IL-1b, MCP-1(=CCL2) and TNFa. It could also interfere with keratinocyte proliferation due to activating of the mTOR pathway.
+
+Since PPIA-BSG (CypA-CD147), only appears to contribute to signaling from fibroblast to keratinocyte in lesional skin and this interaction is proposed to induce inflammation, this pathway is interesting to further investigate.
+
+## MIF
+
+According to an experimental study, fibro-inflammatory progenitor cells were receivers of MIF via atypical chemokine receptor 3 (ACKR3). These FIPs expressed high levels of inflammatory and fibrogenic genes (IL-6, Nfkb1, Smad4, Tgfb1). in ACKR3-ASPC KO mice, reversed repression of fat cell differentiation genes, and restored figrogenic/inflammatory genes: Tnf, Col18a1, Tgfb1, Acta2, Fbln5, Notch1, Tlr7, Cd86, Nfkb1, C3, Cd19. Since this pathway is associated with inflammation, and FIPs are stromal cells like fibroblasts, the interaction from keratinocyte to fibroblast is relevant in the context of this research.
+
+## PTN
+
+PTN-NCL was the strongest interaction on LR-pair level, so the choice was made to continue further with this interaction for experimental validation. Nucleolin (Ncl) is a receptor of PTN, which leads to nuclear localization of PTN and promotes survival and migration of cells. the MK/PTN family (heparin-binding growth factors) has shown to upregulate IL-1b, IL-6 and TNF-a in PMBCs and chemokines MIP2, CXCL2, MCP-1/CCL2. Iin MK-null mice in ischemic renal injury models, there was lower MIP-2 and MCP1 chemokine expression.
+
+## IGFBP
+
+Insulin-binding growth factor binding protein (IGFBP3) and its receptor transmembrane protein 219 (TMEM219) have shown to induce apoptosis by activating Caspase-8. It could be possible that overactivation of this pathway could lead be associated with cell death in lesional AD skin.
+
+## PARs
+
+PRSS3 or mesotrypsin, and the F2R receptor have been indicated in inflammatory diseases like psoriasis and esophagitis datasets, where epithelial cells and mast cells signal to fibroblasts just like in this dataset. Therefore, this could also be an interesting pathway to further investigate.
