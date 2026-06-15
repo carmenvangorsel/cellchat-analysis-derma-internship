@@ -2,6 +2,7 @@
 Bachelor research internship project on cell-cell communication analysis in atopic dermatitis single-cell transcriptomics data. his repository contains R markdown notebook files with R code and additional information in written text that I used for analysis. 
 
 ## Structure
+```text
 cellchat-analysis-derma-internship/
 │
 ├── notebooks/            # R Markdown files (.Rmd) (main analysis pipeline)
@@ -15,6 +16,7 @@ cellchat-analysis-derma-internship/
 ├── sessionInfo.txt       # R packages and version info
 │
 └── README.md
+```
 
 ## Requirements
 - R (version 4.4.3 recommended)
